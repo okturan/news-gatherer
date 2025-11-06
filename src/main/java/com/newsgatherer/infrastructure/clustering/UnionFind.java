@@ -108,7 +108,7 @@ public class UnionFind {
 
         for (int i = 0; i < size; i++) {
             int root = find(i);
-            sets.computeIfAbsent(root, _ -> new ArrayList<>()).add(i);
+            sets.computeIfAbsent(root, k -> new ArrayList<>()).add(i);
         }
 
         return sets;

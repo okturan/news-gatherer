@@ -62,7 +62,7 @@ public class UrlCanonicalizer {
 
             if (shouldKeepParameter(key)) {
                 String value = parts.length > 1 ? parts[1] : "";
-                filteredParams.computeIfAbsent(key, _ -> new ArrayList<>())
+                filteredParams.computeIfAbsent(key, k -> new ArrayList<>())
                               .add(value);
             }
         }
