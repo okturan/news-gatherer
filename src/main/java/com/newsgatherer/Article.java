@@ -1,5 +1,7 @@
 package com.newsgatherer;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.time.ZonedDateTime;
 import java.util.Objects;
 import java.util.Set;
@@ -27,6 +29,7 @@ public record Article(
         Objects.requireNonNull(sourceType, "SourceType cannot be null");
     }
 
+    @JsonIgnore
     public ZonedDateTime getEffectiveDate() {
         return publishedDate != null ? publishedDate : seenDate;
     }
