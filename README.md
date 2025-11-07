@@ -59,10 +59,15 @@ src/main/java/com/newsgatherer/
 Edit `Config.java`:
 
 ```java
-// API
+// GDELT API Configuration
 public static final String GDELT_API_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
 public static final int MAX_ARTICLES = 200;
 public static final String DEFAULT_TIMESPAN = "2h";
+
+// GDELT API Limits (respects DOC 2.0 API constraints)
+public static final int GDELT_MAX_RECORDS = 250;      // Hard API limit
+public static final int SAFE_MAX_RECORDS = 240;       // Safety margin
+public static final Duration MIN_REQUEST_INTERVAL = Duration.ofMillis(2000);  // 0.5 QPS
 
 // Clustering
 public static final Duration TIME_WINDOW = Duration.ofHours(48);
@@ -74,6 +79,17 @@ public static final Set<String> STOP_WORDS = Set.of(
     "son", "dakika", "video", "galeri", ...
 );
 ```
+
+### GDELT API Limits
+
+The implementation respects GDELT DOC 2.0 API constraints:
+
+- **Max 250 articles** per request (mode=artlist limit)
+- **Rate limited** to 0.5 QPS to avoid throttling
+- **Warns** when hitting near the 250-article limit
+- **URL deduplication** via canonicalization (strips UTM params, fbclid, etc.)
+
+**For large time windows (>4h):** Manually split into smaller slices to avoid truncation at 250 articles.
 
 ## How It Works
 

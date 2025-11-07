@@ -42,6 +42,7 @@ public class GdeltNewsClustering {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
+    private long lastRequestTime = 0;
 
     public GdeltNewsClustering() {
         this.httpClient = HttpClient.newBuilder()
@@ -92,27 +93,40 @@ public class GdeltNewsClustering {
     // ============================================================================
 
     private List<Article> fetchArticles(String query, String timespan, int maxRecords) throws Exception {
+        applyRateLimit();
         String queryString = buildQueryString(query, timespan, maxRecords);
         URI uri = new URI(Config.GDELT_API_ENDPOINT + "?" + queryString);
-
         HttpRequest request = HttpRequest.newBuilder(uri)
             .GET()
             .header("Accept", "application/json")
             .build();
-
         HttpResponse<InputStream> response = httpClient.send(
             request,
             HttpResponse.BodyHandlers.ofInputStream()
         );
-
         if (response.statusCode() != 200) {
             throw new RuntimeException("GDELT API returned status " + response.statusCode());
         }
-
         try (InputStream body = response.body()) {
             JsonNode root = objectMapper.readTree(body);
-            return parseArticles(root);
+            List<Article> articles = parseArticles(root);
+            // Check if we hit the limit and need to split the time window
+            if (articles.size() >= Config.SAFE_MAX_RECORDS) {
+                System.out.println("  → Hit " + articles.size() + " articles (near limit), results may be truncated");
+            }
+            return articles;
         }
+    }
+
+    private void applyRateLimit() throws InterruptedException {
+        long now = System.currentTimeMillis();
+        long elapsed = now - lastRequestTime;
+        long minInterval = Config.MIN_REQUEST_INTERVAL.toMillis();
+        if (elapsed < minInterval && lastRequestTime > 0) {
+            long sleepTime = minInterval - elapsed;
+            Thread.sleep(sleepTime);
+        }
+        lastRequestTime = System.currentTimeMillis();
     }
 
     private String buildQueryString(String query, String timespan, int maxRecords) {
