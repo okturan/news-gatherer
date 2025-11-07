@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -12,6 +14,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -65,27 +69,47 @@ public class GdeltNewsClustering {
     }
 
     public void run(String query, String timespan) throws Exception {
+        // Load seen URLs for incremental deduplication
+        System.out.println("Loading seen URLs...");
+        Map<String, Long> seenUrls = loadSeenUrls();
+        System.out.println("  → Tracking " + seenUrls.size() + " previously seen URLs");
+
         // Fetch articles
         System.out.println("Fetching articles from GDELT...");
-        List<Article> articles = fetchArticles(query, timespan, Config.MAX_ARTICLES);
+        List<Article> allArticles = fetchArticles(query, timespan, Config.MAX_ARTICLES);
 
-        if (articles.isEmpty()) {
+        if (allArticles.isEmpty()) {
             System.out.println("No articles found.");
             return;
         }
 
-        System.out.println("Fetched " + articles.size() + " articles.");
+        System.out.println("Fetched " + allArticles.size() + " articles.");
+
+        // Filter out previously seen articles
+        List<Article> newArticles = filterSeenArticles(allArticles, seenUrls);
+
+        if (newArticles.isEmpty()) {
+            System.out.println("No new articles (all previously seen).");
+            saveSeenUrls(seenUrls);
+            return;
+        }
+
+        System.out.println("Processing " + newArticles.size() + " new articles.");
 
         // Cluster similar articles
         System.out.println("Clustering similar articles...");
-        List<List<Article>> clusters = clusterArticles(articles);
+        List<List<Article>> clusters = clusterArticles(newArticles);
 
         System.out.println("Found " + clusters.size() + " unique stories.");
         System.out.println();
 
         // Display results
         displayClusters(clusters);
-        displayMetrics(articles.size(), clusters);
+        displayMetrics(newArticles.size(), clusters);
+
+        // Save outputs
+        saveJsonOutput(clusters);
+        saveSeenUrls(seenUrls);
     }
 
     // ============================================================================
@@ -501,5 +525,54 @@ public class GdeltNewsClustering {
             return text;
         }
         return text.substring(0, maxLength - 1) + "…";
+    }
+
+    // ============================================================================
+    // PERSISTENCE AND JSON OUTPUT
+    // ============================================================================
+
+    private Map<String, Long> loadSeenUrls() throws IOException {
+        File file = new File(Config.SEEN_URLS_FILE);
+        if (!file.exists()) {
+            return new HashMap<>();
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Long> seen = objectMapper.readValue(file, Map.class);
+        // Remove URLs older than retention period
+        long cutoff = System.currentTimeMillis() - Config.SEEN_URL_RETENTION.toMillis();
+        seen.entrySet().removeIf(entry -> ((Number) entry.getValue()).longValue() < cutoff);
+        return new HashMap<>(seen);
+    }
+
+    private void saveSeenUrls(Map<String, Long> seenUrls) throws IOException {
+        Files.createDirectories(Path.of(Config.OUTPUT_DIR));
+        objectMapper.writerWithDefaultPrettyPrinter()
+            .writeValue(new File(Config.SEEN_URLS_FILE), seenUrls);
+    }
+
+    private void saveJsonOutput(List<List<Article>> clusters) throws IOException {
+        Files.createDirectories(Path.of(Config.OUTPUT_DIR));
+        objectMapper.writerWithDefaultPrettyPrinter()
+            .writeValue(new File(Config.CLUSTERS_FILE), clusters);
+        System.out.println("\n✓ Results saved to " + Config.CLUSTERS_FILE);
+    }
+
+    private List<Article> filterSeenArticles(List<Article> articles, Map<String, Long> seenUrls) {
+        long now = System.currentTimeMillis();
+        List<Article> newArticles = new ArrayList<>();
+        int filtered = 0;
+        for (Article article : articles) {
+            String canonical = article.canonicalUrl();
+            if (!seenUrls.containsKey(canonical)) {
+                newArticles.add(article);
+                seenUrls.put(canonical, now);
+            } else {
+                filtered++;
+            }
+        }
+        if (filtered > 0) {
+            System.out.println("  → Filtered " + filtered + " previously seen articles");
+        }
+        return newArticles;
     }
 }

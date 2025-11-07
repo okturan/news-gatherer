@@ -65,4 +65,10 @@ public class Config {
     // Input Validation Limits
     public static final int MAX_TITLE_LENGTH = 10_000;
     public static final int MAX_URL_LENGTH = 2_048;
+
+    // Output Configuration
+    public static final String OUTPUT_DIR = "output";
+    public static final String SEEN_URLS_FILE = OUTPUT_DIR + "/seen_urls.json";
+    public static final String CLUSTERS_FILE = OUTPUT_DIR + "/clusters.json";
+    public static final Duration SEEN_URL_RETENTION = Duration.ofDays(7);  // Forget URLs after 7 days
 }

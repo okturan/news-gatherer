@@ -16,12 +16,18 @@ java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar
 
 ## What It Does
 
-1. Fetches Turkish news from GDELT API (200 articles, last 2 hours)
-2. Normalizes titles (Turkish lowercase, stop words, punctuation)
-3. Generates character shingles (4-char n-grams)
-4. Clusters similar articles (Jaccard similarity ≥ 80%, 48h window)
-5. Selects canonical source (Wire > Publisher > Aggregator)
-6. Displays deduplicated stories
+1. **Fetches** Turkish news from GDELT API (last 2 hours, up to 200 articles)
+2. **Deduplicates** incrementally (tracks seen URLs, 7-day retention)
+3. **Normalizes** titles (Turkish lowercase, stop words, punctuation)
+4. **Generates** character shingles (4-char n-grams)
+5. **Clusters** similar articles (Jaccard similarity ≥ 80%, 48h window)
+6. **Selects** canonical source (Wire > Publisher > Aggregator)
+7. **Outputs** JSON clusters + displays to console
+
+### Output Files
+
+- `output/clusters.json` - Clustered articles in JSON format
+- `output/seen_urls.json` - Incremental deduplication tracking (7-day retention)
 
 ## Example Output
 
@@ -80,16 +86,27 @@ public static final Set<String> STOP_WORDS = Set.of(
 );
 ```
 
-### GDELT API Limits
+### GDELT API Limits & Article Cap
+
+**CRITICAL:** The current implementation has a **200-article limit per run**:
+
+- GDELT hard limit: **250 articles** per request (mode=artlist)
+- Current fetch limit: **200 articles** (configurable in Config.java)
+- Time window: **Last 2 hours**
+
+**⚠️ If there are 500 Turkish articles in 2 hours, you only get the first 200!**
 
 The implementation respects GDELT DOC 2.0 API constraints:
 
-- **Max 250 articles** per request (mode=artlist limit)
+- **Max 250 articles** per request (mode=artlist hard limit)
 - **Rate limited** to 0.5 QPS to avoid throttling
-- **Warns** when hitting near the 250-article limit
+- **Warns** when hitting ≥240 articles (near saturation)
 - **URL deduplication** via canonicalization (strips UTM params, fbclid, etc.)
 
-**For large time windows (>4h):** Manually split into smaller slices to avoid truncation at 250 articles.
+**To fetch ALL articles in busy periods:**
+- Run the tool multiple times (incremental deduplication prevents duplicates)
+- Or reduce timespan to 1h or 30m when you see saturation warnings
+- Future enhancement: Automatic time-window splitting
 
 ## How It Works
 
