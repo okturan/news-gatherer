@@ -351,20 +351,27 @@ public class GdeltNewsClustering {
     private List<List<Article>> clusterArticles(List<Article> articles) {
         int n = articles.size();
         UnionFind uf = new UnionFind(n);
-        // Sort by time (newest first)
+        // Sort by time (newest first), nulls last
         List<Integer> indices = new ArrayList<>(n);
         for (int i = 0; i < n; i++) indices.add(i);
-        indices.sort(Comparator.comparing((Integer i) -> articles.get(i).getEffectiveDate()).reversed());
+        indices.sort(Comparator.comparing(
+            (Integer i) -> articles.get(i).getEffectiveDate(),
+            Comparator.nullsLast(Comparator.reverseOrder())
+        ));
         long timeWindowMillis = Config.TIME_WINDOW.toMillis();
         // Group similar articles within time window
         for (int i = 0; i < n; i++) {
             int idxA = indices.get(i);
             Article articleA = articles.get(idxA);
-            long timeA = articleA.getEffectiveDate().toInstant().toEpochMilli();
+            ZonedDateTime dateA = articleA.getEffectiveDate();
+            if (dateA == null) continue;  // Skip articles without dates
+            long timeA = dateA.toInstant().toEpochMilli();
             for (int j = i + 1; j < n; j++) {
                 int idxB = indices.get(j);
                 Article articleB = articles.get(idxB);
-                long timeB = articleB.getEffectiveDate().toInstant().toEpochMilli();
+                ZonedDateTime dateB = articleB.getEffectiveDate();
+                if (dateB == null) continue;  // Skip articles without dates
+                long timeB = dateB.toInstant().toEpochMilli();
                 // Break if outside time window
                 if (timeA - timeB > timeWindowMillis) {
                     break;
@@ -384,7 +391,10 @@ public class GdeltNewsClustering {
         // Select canonical article for each cluster and sort
         List<List<Article>> clusters = clusterMap.values().stream()
             .map(this::sortClusterWithCanonical)
-            .sorted(Comparator.comparing((List<Article> c) -> c.get(0).getEffectiveDate()).reversed())
+            .sorted(Comparator.comparing(
+                (List<Article> c) -> c.get(0).getEffectiveDate(),
+                Comparator.nullsLast(Comparator.reverseOrder())
+            ))
             .toList();
         return clusters;
     }
@@ -393,12 +403,12 @@ public class GdeltNewsClustering {
         // Select canonical (highest priority source, then earliest time)
         Article canonical = cluster.stream()
             .min(Comparator.comparing((Article a) -> a.sourceType().getPriority())
-                          .thenComparing(Article::getEffectiveDate))
+                          .thenComparing(Article::getEffectiveDate, Comparator.nullsLast(Comparator.naturalOrder())))
             .orElse(cluster.get(0));
 
         // Sort cluster by time with canonical first
         List<Article> sorted = new ArrayList<>(cluster);
-        sorted.sort(Comparator.comparing(Article::getEffectiveDate));
+        sorted.sort(Comparator.comparing(Article::getEffectiveDate, Comparator.nullsLast(Comparator.naturalOrder())));
 
         // Move canonical to front
         if (!sorted.get(0).equals(canonical)) {
@@ -485,7 +495,8 @@ public class GdeltNewsClustering {
             Article canonical = cluster.get(0);
 
             // Cluster header
-            String timestamp = canonical.getEffectiveDate().format(DISPLAY_DATE_FMT);
+            ZonedDateTime date = canonical.getEffectiveDate();
+            String timestamp = date != null ? date.format(DISPLAY_DATE_FMT) : "NO DATE";
             System.out.println("[" + clusterNum++ + "] " + timestamp +
                              " • CANONICAL (" + canonical.sourceType() + ") " +
                              canonical.domain());
@@ -497,7 +508,8 @@ public class GdeltNewsClustering {
                 System.out.println("     Members (" + cluster.size() + "):");
                 for (Article article : cluster) {
                     String marker = article.equals(canonical) ? "★" : "•";
-                    String time = article.getEffectiveDate().format(SHORT_DATE_FMT);
+                    ZonedDateTime articleDate = article.getEffectiveDate();
+                    String time = articleDate != null ? articleDate.format(SHORT_DATE_FMT) : "NO DATE";
                     String title = truncate(article.title(), 90);
 
                     System.out.printf("       %s %-11s %-20s %s  %s%n",
