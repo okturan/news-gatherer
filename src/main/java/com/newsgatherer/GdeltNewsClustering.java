@@ -41,6 +41,7 @@ public class GdeltNewsClustering {
 
     private static final ZoneId ISTANBUL_TZ = ZoneId.of("Europe/Istanbul");
     private static final DateTimeFormatter GDELT_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter GDELT_COMPACT_FMT = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
     private static final DateTimeFormatter DISPLAY_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter SHORT_DATE_FMT = DateTimeFormatter.ofPattern("MM-dd HH:mm");
 
@@ -252,10 +253,17 @@ public class GdeltNewsClustering {
         }
 
         try {
+            // GDELT compact format: "20251107T000000Z"
+            if (dateString.length() == 16 && dateString.charAt(8) == 'T') {
+                LocalDateTime ldt = LocalDateTime.parse(dateString, GDELT_COMPACT_FMT);
+                return ldt.atZone(ZoneId.of("UTC")).withZoneSameInstant(ISTANBUL_TZ);
+            }
+            // Standard format with space: "2025-11-07 00:00:00"
             if (dateString.length() == 19 && dateString.charAt(10) == ' ') {
                 LocalDateTime ldt = LocalDateTime.parse(dateString, GDELT_DATE_FMT);
                 return ldt.atZone(ISTANBUL_TZ);
             }
+            // ISO 8601 with separators: "2025-11-07T00:00:00Z"
             return ZonedDateTime.parse(dateString).withZoneSameInstant(ISTANBUL_TZ);
         } catch (Exception _) {
             return null;
