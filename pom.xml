@@ -14,9 +14,9 @@
     <description>A modern news article gathering and clustering application</description>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency Versions -->
@@ -24,6 +24,9 @@
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <mockito.version>5.15.2</mockito.version>
+
+        <!-- Static Analysis Tool Versions -->
+        <maven-checkstyle-plugin.version>3.5.0</maven-checkstyle-plugin.version>
     </properties>
 
     <dependencies>
@@ -73,9 +76,11 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <release>21</release>
+                    <release>25</release>
                     <compilerArgs>
                         <arg>-parameters</arg>
+                        <arg>-Xlint:deprecation</arg>
+                        <arg>-Xlint:unchecked</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>
@@ -93,7 +98,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.newsgatherer.presentation.console.ConsoleApplication</mainClass>
+                            <mainClass>com.newsgatherer.GdeltNewsClustering</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -112,7 +117,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.newsgatherer.presentation.console.ConsoleApplication</mainClass>
+                                    <mainClass>com.newsgatherer.GdeltNewsClustering</mainClass>
                                 </transformer>
                             </transformers>
                             <filters>
@@ -126,6 +131,26 @@
                                 </filter>
                             </filters>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Checkstyle - Code quality and style checks -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${maven-checkstyle-plugin.version}</version>
+                <configuration>
+                    <configLocation>checkstyle.xml</configLocation>
+                    <failOnViolation>true</failOnViolation>
+                    <violationSeverity>warning</violationSeverity>
+                    <consoleOutput>true</consoleOutput>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>
