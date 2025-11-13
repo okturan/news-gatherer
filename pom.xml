@@ -11,7 +11,7 @@
     <packaging>jar</packaging>
 
     <name>News Gatherer</name>
-    <description>A modern news article gathering and clustering application</description>
+    <description>A modern news article gathering CLI with SQLite persistence</description>
 
     <properties>
         <maven.compiler.source>25</maven.compiler.source>
@@ -24,6 +24,7 @@
         <junit.version>5.11.4</junit.version>
         <assertj.version>3.27.3</assertj.version>
         <mockito.version>5.15.2</mockito.version>
+        <sqlite.version>3.46.0.0</sqlite.version>
 
         <!-- Static Analysis Tool Versions -->
         <maven-checkstyle-plugin.version>3.5.0</maven-checkstyle-plugin.version>
@@ -67,6 +68,13 @@
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- SQLite for lightweight persistence -->
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>${sqlite.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -98,7 +106,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>com.newsgatherer.GdeltNewsClustering</mainClass>
+                            <mainClass>com.newsgatherer.GdeltNewsGatherer</mainClass>
                         </manifest>
                     </archive>
                 </configuration>
@@ -118,7 +126,7 @@
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.newsgatherer.GdeltNewsClustering</mainClass>
+                                    <mainClass>com.newsgatherer.GdeltNewsGatherer</mainClass>
                                 </transformer>
                             </transformers>
                             <filters>

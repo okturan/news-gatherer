@@ -1,247 +1,102 @@
 # News Gatherer
 
-A lightweight Turkish news clustering tool. Fetches articles from GDELT, groups similar stories, and displays them with canonical source selection.
-
-**624 lines of Java 25 | 4 files | Zero complexity overhead**
+A lean Java 25 CLI that pulls Turkish articles from the GDELT DOC 2.0 API, deduplicates them by canonical URL, and stores every fresh story in a local SQLite database for later analysis.
 
 ## Quick Start
 
 ```bash
-# Build
 mvn clean package
-
-# Run
 java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar
 ```
 
 ## What It Does
 
-1. **Fetches** Turkish news from GDELT API (last 2 hours, up to 200 articles)
-2. **Deduplicates** incrementally (tracks seen URLs, 7-day retention)
-3. **Normalizes** titles (Turkish lowercase, stop words, punctuation)
-4. **Generates** character shingles (4-char n-grams)
-5. **Clusters** similar articles (Jaccard similarity ≥ 80%, 48h window)
-6. **Selects** canonical source (Wire > Publisher > Aggregator)
-7. **Outputs** JSON clusters + displays to console
+1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable) and warns when the response hits the 250‑row cap.
+2. **Canonicalizes** URLs by trimming tracking parameters (`utm_*`, `fbclid`, etc.) and trailing slashes so different share links collapse to the same key.
+3. **Deduplicates** incrementally via SQLite (`output/news-gatherer.db`). Once a canonical URL is seen, it will be skipped for the next 7 days (retention window).
+4. **Persists** new articles (URL, title, domain, language, timestamps) and prints them in recency order with fetched/new/duplicate counts.
 
-### Output Files
+### Storage Layout
 
-- `output/clusters.json` - Clustered articles in JSON format
-- `output/seen_urls.json` - Incremental deduplication tracking (7-day retention)
+- Database: `output/news-gatherer.db`
+- `seen_urls(canonical_url TEXT PRIMARY KEY, first_seen INTEGER)`
+- `articles(id INTEGER PK, url, title, domain, language, source_country, seen_date, published_date, canonical_url, stored_at)`
+- Inspect with `sqlite3 output/news-gatherer.db 'SELECT title, domain FROM articles ORDER BY id DESC LIMIT 5;'`
 
 ## Example Output
 
 ```
-[1] 2025-11-07 02:15 • CANONICAL (WIRE) aa.com.tr
-     İstanbul'da önemli gelişme
-     https://www.aa.com.tr/tr/gundem/istanbul-onemli-gelisme/123456
-     Members (3):
-       ★ WIRE        aa.com.tr            11-07 02:15  İstanbul'da önemli gelişme
-       • PUBLISHER   hurriyet.com.tr      11-07 02:16  İstanbul gelişmesi
-       • AGGREGATOR  ensonhaber.com       11-07 02:20  Son Dakika: İstanbul haberi
+[001] 2025-11-09 03:45 • aa.com.tr
+      Cumhurbaşkanı Erdoğan yurda döndü
+      https://www.aa.com.tr/tr/politika/cumhurbaskani-erdogan-yurda-dondu/123456
 
-=== METRICS ===
-Articles fetched:   200
-Story clusters:     45
-Avg items/cluster:  4.44
+[002] 2025-11-09 03:42 • hurriyet.com.tr
+      İstanbul'da kuvvetli fırtına uyarısı
+      https://www.hurriyet.com.tr/gundem/istanbulda-kuvvetli-firtina-uyarisi-123456
+
+=== SUMMARY ===
+Fetched:      153
+New articles: 42
+Duplicates:   111
 ```
 
 ## Architecture
 
-**4 files, 624 lines:**
-
 ```
 src/main/java/com/newsgatherer/
-├── GdeltNewsClustering.java    495 lines  Main logic
-├── Config.java                  57 lines  Constants
-├── Article.java                 33 lines  Data model
-└── SourceType.java              39 lines  Enum
+├── GdeltNewsGatherer.java          // CLI entry point & workflow orchestration
+├── config/Config.java              // Tunables (API, rate limits, storage)
+├── domain/Article.java             // Record for parsed articles
+├── client/GdeltApiClient.java      // HTTP client + rate limiting + JSON fetch
+├── parser/ArticleParser.java       // JSON → Article mapping & canonicalization
+├── output/ArticlePrinter.java      // Console formatting for new articles
+└── storage/ArticleRepository.java  // SQLite persistence + seen-url tracking
 ```
 
-**No interfaces, no DI, no layers - just simple, readable code.**
+No DI, no frameworks, no background services—just a few single-purpose classes wired together in the CLI.
 
 ## Configuration
 
-Edit `Config.java`:
+Key knobs in `config/Config.java`:
 
 ```java
-// GDELT API Configuration
+// GDELT API
 public static final String GDELT_API_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
-public static final int MAX_ARTICLES = 200;
-public static final String DEFAULT_TIMESPAN = "2h";
+public static final int MAX_ARTICLES = 200;         // request size (≤250)
+public static final String DEFAULT_TIMESPAN = "2h"; // window per run
+public static final Duration MIN_REQUEST_INTERVAL = Duration.ofMillis(2000); // 0.5 QPS
 
-// GDELT API Limits (respects DOC 2.0 API constraints)
-public static final int GDELT_MAX_RECORDS = 250;      // Hard API limit
-public static final int SAFE_MAX_RECORDS = 240;       // Safety margin
-public static final Duration MIN_REQUEST_INTERVAL = Duration.ofMillis(2000);  // 0.5 QPS
-
-// Clustering
-public static final Duration TIME_WINDOW = Duration.ofHours(48);
-public static final double SIMILARITY_THRESHOLD = 0.80;
-public static final int SHINGLE_SIZE = 4;
-
-// Turkish stop words
-public static final Set<String> STOP_WORDS = Set.of(
-    "son", "dakika", "video", "galeri", ...
-);
+// Storage
+public static final String OUTPUT_DIR = "output";
+public static final String DATABASE_FILE = OUTPUT_DIR + "/news-gatherer.db";
+public static final Duration SEEN_URL_RETENTION = Duration.ofDays(7);
 ```
 
-### GDELT API Limits & Article Cap
+## GDELT Constraints & Tips
 
-**CRITICAL:** The current implementation has a **200-article limit per run**:
+- The DOC API caps responses at 250 rows. If you regularly see the “near limit” warning, rerun with a shorter `TIMESPAN` (e.g., `1h` or `30m`) or build a time-splitting loop.
+- GDELT does not expose article bodies or summaries—only metadata. For Ground-News‑style comparisons you’d need to fetch each URL yourself.
+- Rate limiting is mandatory: sustained >0.5 QPS can get throttled. The CLI enforces a 2‑second gap between requests.
 
-- GDELT hard limit: **250 articles** per request (mode=artlist)
-- Current fetch limit: **200 articles** (configurable in Config.java)
-- Time window: **Last 2 hours**
+## How It Works Internally
 
-**⚠️ If there are 500 Turkish articles in 2 hours, you only get the first 200!**
+1. **HTTP** – `GdeltApiClient` builds the query string (`mode=artlist`, `timespan`, `maxrecords`) and uses Java’s `HttpClient` with HTTP/2 and a built-in rate limiter.
+2. **Parsing** – `ArticleParser` reads the JSON, handles both `articles` and `artlist` payloads, and maps each node to an `Article` record.
+3. **Canonicalization** – Domains fall back to the URL host, tracking params are stripped, and everything is lowercased via `Locale.ROOT` for stability.
+4. **Deduplication** – `seen_urls` is loaded at startup, pruned (entries older than 7 days deleted), and updated with `INSERT OR IGNORE` for each new canonical URL.
+5. **Persistence** – `ArticleRepository` batches fresh stories into the `articles` table with ISO-8601 timestamps and the run’s `stored_at` epoch so downstream tooling can group by ingest.
+6. **Display** – `ArticlePrinter` shows new items in reverse chronological order along with run-level metrics so you can spot anomalies quickly.
 
-The implementation respects GDELT DOC 2.0 API constraints:
+## Java 25 Features in Play
 
-- **Max 250 articles** per request (mode=artlist hard limit)
-- **Rate limited** to 0.5 QPS to avoid throttling
-- **Warns** when hitting ≥240 articles (near saturation)
-- **URL deduplication** via canonicalization (strips UTM params, fbclid, etc.)
+- **Records** for `Article` (immutable, concise data carrier)
+- **Stream::toList** for tidy collection materialization without collectors
+- **Text blocks** for multi-line SQL DDL/insert statements
 
-**To fetch ALL articles in busy periods:**
-- Run the tool multiple times (incremental deduplication prevents duplicates)
-- Or reduce timespan to 1h or 30m when you see saturation warnings
-- Future enhancement: Automatic time-window splitting
+## Development Notes
 
-## How It Works
+- `sqlite3 output/news-gatherer.db` is the fastest way to explore historical runs. Keep ad‑hoc queries in `data/` if they become reusable.
+- When adding new metadata columns, update the `articles` table DDL and the insert statement; SQLite will retain existing rows (new columns default to `NULL`).
+- Run `mvn clean verify` before sharing changes—Checkstyle is wired into the build and enforces basic hygiene.
 
-### Text Processing
-- Turkish case: İ→i, I→ı
-- Remove punctuation: `[\\p{Punct}]+` → space
-- Remove stop words: "son dakika video" etc.
-- Generate shingles: "test" → " tes", "test", "est "
-
-### Clustering
-- Sort by time (newest first)
-- Compare within 48h window using Jaccard similarity
-- Union-Find for efficient grouping: O(n×α(n)) ≈ O(n)
-- Jaccard threshold: 0.80 (80% overlap required)
-
-### Canonical Selection
-Priority: WIRE (1) > PUBLISHER (2) > AGGREGATOR (3)
-Tie-break: earliest timestamp
-
-## Performance
-
-**Current (optimized):**
-- 100 articles: <1s
-- 500 articles: 1-2s
-- 1,000 articles: 2-4s
-
-**Optimizations applied:**
-- Iterate smaller set in Jaccard similarity
-- Pre-compiled regex patterns
-- Epoch millis for time comparisons
-- Streaming JSON parsing
-- No defensive copies
-
-**For 10,000+ articles:** Implement inverted shingle index (see CHANGELOG.md)
-
-## Java 25 Features
-
-- Records (Article)
-- Pattern matching for switch (JSON parsing)
-- Unnamed variables `_` (unused lambda params, catch blocks)
-- Sequenced collections (getFirst)
-- Text blocks
-- Locale.of()
-
-## Why This Architecture?
-
-This is a **deliberately simple** codebase following YAGNI principles:
-
-✅ **Use this approach for:**
-- CLI tools
-- Single-purpose apps
-- Scripts that grew up
-- Small teams (1-3 devs)
-
-❌ **Don't use for:**
-- Large teams (10+ devs)
-- Multiple deployment targets
-- Heavy mocking requirements
-- Enterprise with rigid architecture
-
-## Design Philosophy
-
-**Pragmatism over purity:**
-- One file for main logic (not 31 files)
-- Constants instead of builders (not 3 config classes)
-- Direct calls instead of DI (not 158-line container)
-- Same functionality, 70% less code
-
-**Before (over-engineered):** 2,097 lines, 31 files, 8 packages, 4 layers
-**After (pragmatic):** 624 lines, 4 files, 1 package, simple
-
-See `CHANGELOG.md` for refactoring journey.
-
-## Development
-
-### Adding Features
-
-```java
-// Example: Add JSON output format
-private void displayAsJSON(List<List<Article>> clusters) {
-    // Implementation here
-}
-
-// In main()
-if (args.length > 0 && "json".equals(args[0])) {
-    app.displayAsJSON(clusters);
-} else {
-    app.displayClusters(clusters);
-}
-```
-
-### Testing
-
-```bash
-mvn test                    # Run tests
-mvn clean verify            # Full build with tests
-```
-
-### Code Style
-
-- Keep methods under 30 lines
-- Use descriptive names
-- Add comments for complex algorithms only
-- Pre-compile regex as static fields
-- Validate inputs early
-
-## Contributing
-
-This codebase values **simplicity**. Welcome contributions:
-
-✅ Bug fixes
-✅ Performance improvements
-✅ Better algorithms
-✅ Documentation
-
-❌ Abstraction layers
-❌ Interface hierarchies
-❌ Dependency injection
-❌ Complexity for "future needs"
-
-## Requirements
-
-- Java 25+
-- Maven 3.9+
-
-## License
-
-MIT License - Use freely for personal or commercial projects.
-
-## Acknowledgments
-
-- GDELT Project - Global news database
-- Java 25 - Modern language features
-- Jackson - JSON processing
-
----
-
-**Built with ☕ and pragmatism** | 624 lines of simple, effective code
+Happy collecting!
