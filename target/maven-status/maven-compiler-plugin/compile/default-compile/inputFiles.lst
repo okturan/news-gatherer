@@ -1,7 +1,0 @@
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/GdeltNewsGatherer.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/client/GdeltApiClient.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/config/Config.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/domain/Article.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/output/ArticlePrinter.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/parser/ArticleParser.java
-/Users/okan/code/news-gatherer/src/main/java/com/newsgatherer/storage/ArticleRepository.java

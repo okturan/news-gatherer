@@ -1,7 +1,0 @@
-com/newsgatherer/GdeltNewsGatherer.class
-com/newsgatherer/domain/Article.class
-com/newsgatherer/storage/ArticleRepository.class
-com/newsgatherer/config/Config.class
-com/newsgatherer/parser/ArticleParser.class
-com/newsgatherer/output/ArticlePrinter.class
-com/newsgatherer/client/GdeltApiClient.class
