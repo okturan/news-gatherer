@@ -24,6 +24,19 @@ Other useful flags:
 - `--timespan=...` – single-run timespan (e.g., `30m`, `2h`) when not using backfill mode
 - `--window=...` – chunk size for the backfill loop (supports `m`, `h`, `d` suffixes)
 
+### Hand Off to News Extractor
+
+After each run, the SQLite backlog can be inspected with the Python extractor (see the root `../README.md` for the full workflow):
+
+```bash
+cd ../news-extractor
+poetry run python examples/scrape_news_gatherer_backlog.py \
+  --db ../news-gatherer/output/news-gatherer.db \
+  --limit 50 --format json > backlog.jsonl
+```
+
+Then use `examples/view_jsonl.py` or `examples/backlog_viewer.html` to review extractions. This keeps the Java collector and Python extractor in sync without duplicating logic.
+
 ## What It Does
 
 1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable) and warns when the response hits the 250‑row cap.
@@ -86,6 +99,17 @@ public static final String OUTPUT_DIR = "output";
 public static final String DATABASE_FILE = OUTPUT_DIR + "/news-gatherer.db";
 public static final Duration SEEN_URL_RETENTION = Duration.ofDays(7);
 ```
+
+### Environment Overrides
+
+You can customize deployment settings without editing the source by exporting these variables:
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `NEWS_GATHERER_OUTPUT_DIR` | `output` | Directory for generated artifacts. |
+| `NEWS_GATHERER_DATABASE_FILE` | `<OUTPUT_DIR>/news-gatherer.db` | Absolute/relative path to the SQLite database. |
+| `NEWS_GATHERER_SEEN_RETENTION_DAYS` | `7` | Number of days to keep URLs in the `seen_urls` cache. |
+| `NEWS_GATHERER_MIN_REQUEST_INTERVAL_MS` | `2000` | Minimum milliseconds between requests (rate limit). |
 
 ## GDELT Constraints & Tips
 
