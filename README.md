@@ -9,6 +9,21 @@ mvn clean package
 java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar
 ```
 
+### Backfill Entire Weeks
+
+Use the new CLI flags to chunk the lookback window so you can safely ingest every Turkish article without blowing past the 250-row cap. Example: fetch the last 7 days using 1‑hour slices (the default window) while respecting the built-in rate limit:
+
+```bash
+mvn clean package
+java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar --lookback=7d --window=1h
+```
+
+Other useful flags:
+
+- `--query=...` – override the default `sourcecountry:turkey sourcelang:turkish` query
+- `--timespan=...` – single-run timespan (e.g., `30m`, `2h`) when not using backfill mode
+- `--window=...` – chunk size for the backfill loop (supports `m`, `h`, `d` suffixes)
+
 ## What It Does
 
 1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable) and warns when the response hits the 250‑row cap.

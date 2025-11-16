@@ -15,6 +15,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -26,6 +29,9 @@ public class GdeltApiClient {
     private final ObjectMapper objectMapper;
     private final ArticleParser articleParser;
     private long lastRequestTime = 0;
+
+    private static final DateTimeFormatter API_DATE_FORMAT =
+        DateTimeFormatter.ofPattern("yyyyMMddHHmmss").withZone(ZoneOffset.UTC);
 
     public GdeltApiClient() {
         this(HttpClient.newBuilder()
@@ -44,9 +50,23 @@ public class GdeltApiClient {
 
     public List<Article> fetchArticles(String query, String timespan, int maxRecords)
         throws IOException, InterruptedException {
+        return executeFetch(buildUri(query, timespan, maxRecords));
+    }
+
+    public List<Article> fetchArticles(String query,
+                                       ZonedDateTime start,
+                                       ZonedDateTime end,
+                                       int maxRecords) throws IOException, InterruptedException {
+        if (!start.isBefore(end)) {
+            return List.of();
+        }
+        return executeFetch(buildUri(query, start, end, maxRecords));
+    }
+
+    private List<Article> executeFetch(URI uri) throws IOException, InterruptedException {
         applyRateLimit();
 
-        HttpRequest request = HttpRequest.newBuilder(buildUri(query, timespan, maxRecords))
+        HttpRequest request = HttpRequest.newBuilder(uri)
             .GET()
             .header("Accept", "application/json")
             .build();
@@ -90,6 +110,17 @@ public class GdeltApiClient {
             "&mode=artlist" +
             "&format=json" +
             "&timespan=" + URLEncoder.encode(timespan, StandardCharsets.UTF_8) +
+            "&maxrecords=" + maxRecords +
+            "&sort=datedesc";
+        return URI.create(Config.GDELT_API_ENDPOINT + "?" + queryString);
+    }
+
+    private URI buildUri(String query, ZonedDateTime start, ZonedDateTime end, int maxRecords) {
+        String queryString = "query=" + URLEncoder.encode(query, StandardCharsets.UTF_8) +
+            "&mode=artlist" +
+            "&format=json" +
+            "&STARTDATETIME=" + API_DATE_FORMAT.format(start.withZoneSameInstant(ZoneOffset.UTC)) +
+            "&ENDDATETIME=" + API_DATE_FORMAT.format(end.withZoneSameInstant(ZoneOffset.UTC)) +
             "&maxrecords=" + maxRecords +
             "&sort=datedesc";
         return URI.create(Config.GDELT_API_ENDPOINT + "?" + queryString);
