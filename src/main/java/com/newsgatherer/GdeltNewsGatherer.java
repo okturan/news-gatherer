@@ -147,18 +147,11 @@ public class GdeltNewsGatherer {
                               ArticleRepository repository,
                               Map<String, Long> seenUrls,
                               BackfillStats stats) throws Exception {
-        System.out.printf("Window %s → %s UTC%n", formatTimestamp(start), formatTimestamp(end));
-        List<Article> articles = apiClient.fetchArticles(query, start, end, Config.MAX_ARTICLES);
+        List<Article> articles = fetchWindowArticles(query, start, end);
+        Duration span = Duration.between(start, end);
 
-        if (shouldSplitWindow(articles.size(), start, end)) {
-            System.out.println("  → Window saturated (" + articles.size()
-                + ") - splitting into smaller slices");
-            ZonedDateTime midpoint = start.plus(Duration.between(start, end).dividedBy(2));
-            if (!midpoint.isAfter(start)) {
-                midpoint = start.plusMinutes(1);
-            }
-            ingestWindow(query, start, midpoint, repository, seenUrls, stats);
-            ingestWindow(query, midpoint, end, repository, seenUrls, stats);
+        if (shouldSplitWindow(articles, span)) {
+            splitWindow(query, start, end, repository, seenUrls, stats, articles.size());
             return;
         }
 
@@ -168,11 +161,52 @@ public class GdeltNewsGatherer {
         }
 
         stats.addFetched(articles.size());
-        if (articles.size() >= Config.MAX_ARTICLES
-            && Duration.between(start, end).compareTo(MIN_SPLIT_WINDOW) <= 0) {
+        persistNewArticles(articles, start, end, repository, seenUrls, stats);
+    }
+
+    private List<Article> fetchWindowArticles(String query,
+                                              ZonedDateTime start,
+                                              ZonedDateTime end) throws Exception {
+        System.out.printf("Window %s → %s UTC%n", formatTimestamp(start), formatTimestamp(end));
+        return apiClient.fetchArticles(query, start, end, Config.MAX_ARTICLES);
+    }
+
+    private boolean shouldSplitWindow(List<Article> articles, Duration span) {
+        if (articles.size() < Config.MAX_ARTICLES) {
+            return false;
+        }
+        return span.compareTo(MIN_SPLIT_WINDOW) > 0;
+    }
+
+    private void splitWindow(String query,
+                             ZonedDateTime start,
+                             ZonedDateTime end,
+                             ArticleRepository repository,
+                             Map<String, Long> seenUrls,
+                             BackfillStats stats,
+                             int articleCount) throws Exception {
+        System.out.println("  → Window saturated (" + articleCount
+            + ") - splitting into smaller slices");
+        ZonedDateTime midpoint = start.plus(Duration.between(start, end).dividedBy(2));
+        if (!midpoint.isAfter(start)) {
+            midpoint = start.plusMinutes(1);
+        }
+        ingestWindow(query, start, midpoint, repository, seenUrls, stats);
+        ingestWindow(query, midpoint, end, repository, seenUrls, stats);
+    }
+
+    private void persistNewArticles(List<Article> articles,
+                                    ZonedDateTime start,
+                                    ZonedDateTime end,
+                                    ArticleRepository repository,
+                                    Map<String, Long> seenUrls,
+                                    BackfillStats stats) throws Exception {
+        Duration span = Duration.between(start, end);
+        if (articles.size() >= Config.MAX_ARTICLES && span.compareTo(MIN_SPLIT_WINDOW) <= 0) {
             System.out.println("  → Warning: window hit the API cap and cannot be split below "
                 + MIN_SPLIT_WINDOW.toMinutes() + " minutes. Some results may be truncated.");
         }
+
         List<Article> newArticles = repository.filterNewArticles(articles, seenUrls);
         if (newArticles.isEmpty()) {
             return;
@@ -180,14 +214,6 @@ public class GdeltNewsGatherer {
 
         repository.saveArticles(newArticles);
         stats.addNewArticles(newArticles);
-    }
-
-    private boolean shouldSplitWindow(int articleCount, ZonedDateTime start, ZonedDateTime end) {
-        if (articleCount < Config.MAX_ARTICLES) {
-            return false;
-        }
-        Duration span = Duration.between(start, end);
-        return span.compareTo(MIN_SPLIT_WINDOW) > 0;
     }
 
     private void validateDuration(String label, Duration duration) {
