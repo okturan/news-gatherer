@@ -23,6 +23,7 @@ Other useful flags:
 - `--query=...` – override the default `sourcecountry:turkey sourcelang:turkish` query
 - `--timespan=...` – single-run timespan (e.g., `30m`, `2h`) when not using backfill mode
 - `--window=...` – chunk size for the backfill loop (supports `m`, `h`, `d` suffixes)
+- `--json-output=...` – write newline-delimited JSON of new articles (from the latest run) to the given path
 
 ### Hand Off to News Extractor
 

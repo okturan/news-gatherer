@@ -1,5 +1,7 @@
 package com.newsgatherer.config;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -12,7 +14,8 @@ public record CliOptions(
     String query,
     String timespan,
     Optional<Duration> lookback,
-    Duration window
+    Duration window,
+    Optional<Path> jsonOutput
 ) {
 
     private static final Pattern DURATION_PATTERN = Pattern.compile("(?i)^(\\d+)([smhd])$");
@@ -23,6 +26,7 @@ public record CliOptions(
         String timespan = Config.DEFAULT_TIMESPAN;
         Duration lookback = null;
         Duration window = DEFAULT_WINDOW;
+        Path jsonOutput = null;
 
         if (args != null) {
             for (String arg : args) {
@@ -40,13 +44,23 @@ public record CliOptions(
                     lookback = parseDuration(arg.substring("--lookback=".length()));
                 } else if (arg.startsWith("--window=")) {
                     window = parseDuration(arg.substring("--window=".length()));
+                } else if (arg.startsWith("--json-output=")) {
+                    jsonOutput = parsePath(arg.substring("--json-output=".length()));
                 } else {
                     throw new IllegalArgumentException("Unknown argument: " + arg);
                 }
             }
         }
 
-        return new CliOptions(query, timespan, Optional.ofNullable(lookback), window);
+        return new CliOptions(query, timespan, Optional.ofNullable(lookback), window, Optional.ofNullable(jsonOutput));
+    }
+
+    private static Path parsePath(String token) {
+        String trimmed = token.trim();
+        if (trimmed.isEmpty()) {
+            throw new IllegalArgumentException("--json-output requires a file path");
+        }
+        return Paths.get(trimmed);
     }
 
     private static Duration parseDuration(String token) {
@@ -78,6 +92,7 @@ public record CliOptions(
               --timespan=...    Timespan (e.g. 30m, 2h) for a single window run
               --lookback=...    Enable backfill mode covering the past duration (e.g. 7d)
               --window=...      Window size used to chunk the lookback range (default 1h)
+              --json-output=... Write newline-delimited JSON of new articles to the given path
               --help            Show this message
             """);
     }

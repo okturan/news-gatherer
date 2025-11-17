@@ -1,5 +1,7 @@
 package com.newsgatherer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.newsgatherer.client.GdeltApiClient;
 import com.newsgatherer.config.CliOptions;
 import com.newsgatherer.config.Config;
@@ -7,6 +9,12 @@ import com.newsgatherer.domain.Article;
 import com.newsgatherer.output.ArticlePrinter;
 import com.newsgatherer.storage.ArticleRepository;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
@@ -14,6 +22,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Lightweight CLI that fetches Turkish GDELT articles and stores
@@ -27,14 +36,16 @@ public class GdeltNewsGatherer {
 
     private final GdeltApiClient apiClient;
     private final ArticlePrinter articlePrinter;
+    private final ObjectMapper objectMapper;
 
     public GdeltNewsGatherer() {
-        this(new GdeltApiClient(), new ArticlePrinter());
+        this(new GdeltApiClient(), new ArticlePrinter(), new ObjectMapper().registerModule(new JavaTimeModule()));
     }
 
-    public GdeltNewsGatherer(GdeltApiClient apiClient, ArticlePrinter articlePrinter) {
+    public GdeltNewsGatherer(GdeltApiClient apiClient, ArticlePrinter articlePrinter, ObjectMapper objectMapper) {
         this.apiClient = apiClient;
         this.articlePrinter = articlePrinter;
+        this.objectMapper = objectMapper;
     }
 
     public static void main(String[] args) {
@@ -42,9 +53,9 @@ public class GdeltNewsGatherer {
         try {
             GdeltNewsGatherer gatherer = new GdeltNewsGatherer();
             if (options.lookback().isPresent()) {
-                gatherer.runBackfill(options.query(), options.lookback().get(), options.window());
+                gatherer.runBackfill(options);
             } else {
-                gatherer.run(options.query(), options.timespan());
+                gatherer.run(options);
             }
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
@@ -52,7 +63,9 @@ public class GdeltNewsGatherer {
         }
     }
 
-    public void run(String query, String timespan) throws Exception {
+    public void run(CliOptions options) throws Exception {
+        String query = options.query();
+        String timespan = options.timespan();
         try (ArticleRepository repository = new ArticleRepository(Config.DATABASE_FILE)) {
             System.out.println("Loading seen URLs...");
             Map<String, Long> seenUrls = repository.loadSeenUrls();
@@ -62,6 +75,7 @@ public class GdeltNewsGatherer {
             List<Article> allArticles = apiClient.fetchArticles(query, timespan, Config.MAX_ARTICLES);
 
             if (allArticles.isEmpty()) {
+                writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No articles found.");
                 return;
             }
@@ -72,6 +86,7 @@ public class GdeltNewsGatherer {
             int filteredCount = allArticles.size() - newArticles.size();
 
             if (newArticles.isEmpty()) {
+                writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No new articles (all previously seen).");
                 return;
             }
@@ -80,10 +95,14 @@ public class GdeltNewsGatherer {
             articlePrinter.printArticles(newArticles, allArticles.size(), filteredCount);
 
             System.out.println("Stored " + newArticles.size() + " new articles in " + Config.DATABASE_FILE);
+            writeJsonIfRequested(newArticles, options.jsonOutput());
         }
     }
 
-    public void runBackfill(String query, Duration lookback, Duration window) throws Exception {
+    public void runBackfill(CliOptions options) throws Exception {
+        Duration lookback = options.lookback().orElseThrow(() ->
+            new IllegalArgumentException("lookback duration is required for backfill mode"));
+        Duration window = options.window();
         validateDuration("lookback", lookback);
         validateDuration("window", window);
 
@@ -105,18 +124,20 @@ public class GdeltNewsGatherer {
                 if (next.isAfter(end)) {
                     next = end;
                 }
-                ingestWindow(query, cursor, next, repository, seenUrls, stats);
+                ingestWindow(options.query(), cursor, next, repository, seenUrls, stats);
                 cursor = next;
             }
 
             System.out.printf("Backfill complete. Processed %d windows.%n", stats.windowsProcessed());
             if (stats.newArticles().isEmpty()) {
+                writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No new articles were discovered in the requested window.");
                 return;
             }
             articlePrinter.printArticles(stats.newArticles(), stats.totalFetched(),
                 stats.totalFetched() - stats.totalNew());
             System.out.println("Stored " + stats.totalNew() + " new articles in " + Config.DATABASE_FILE);
+            writeJsonIfRequested(stats.newArticles(), options.jsonOutput());
         }
     }
 
@@ -195,6 +216,27 @@ public class GdeltNewsGatherer {
             builder.append(minutes).append("m");
         }
         return builder.toString().trim();
+    }
+
+    private void writeJsonIfRequested(List<Article> articles, Optional<Path> destination) {
+        if (destination.isEmpty()) {
+            return;
+        }
+        Path output = destination.get();
+        try (BufferedWriter writer = Files.newBufferedWriter(
+            output,
+            StandardCharsets.UTF_8,
+            StandardOpenOption.CREATE,
+            StandardOpenOption.TRUNCATE_EXISTING
+        )) {
+            for (Article article : articles) {
+                writer.write(objectMapper.writeValueAsString(article));
+                writer.newLine();
+            }
+            System.out.printf("Wrote %d article(s) to %s%n", articles.size(), output);
+        } catch (IOException e) {
+            System.err.println("Failed to write JSON output to " + output + ": " + e.getMessage());
+        }
     }
 
     private static final class BackfillStats {
