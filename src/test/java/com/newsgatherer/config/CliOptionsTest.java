@@ -17,7 +17,8 @@ class CliOptionsTest {
             "--timespan=45m",
             "--lookback=7d",
             "--window=30m",
-            "--json-output=output/articles.ndjson"
+            "--json-output=output/articles.ndjson",
+            "--demo"
         });
 
         assertThat(options.query()).isEqualTo("domain:example.com");
@@ -25,6 +26,7 @@ class CliOptionsTest {
         assertThat(options.lookback()).contains(Duration.ofDays(7));
         assertThat(options.window()).isEqualTo(Duration.ofMinutes(30));
         assertThat(options.jsonOutput()).contains(Path.of("output/articles.ndjson"));
+        assertThat(options.demo()).isTrue();
     }
 
     @Test
@@ -34,6 +36,7 @@ class CliOptionsTest {
         assertThat(options.lookback()).isEmpty();
         assertThat(options.window()).isEqualTo(Duration.ofHours(1));
         assertThat(options.jsonOutput()).isEmpty();
+        assertThat(options.demo()).isFalse();
     }
 
     @Test

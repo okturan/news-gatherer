@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" role="img" aria-labelledby="title desc">
+  <title id="title">News Gatherer deterministic offline CLI demo</title>
+  <desc id="desc">The packaged CLI renders three synthetic Turkish news records and a fetched, new, and duplicate summary without network or database access.</desc>
+  <rect width="1280" height="640" rx="18" fill="#0d1117"/>
+  <rect width="1280" height="58" rx="18" fill="#161b22"/>
+  <rect y="40" width="1280" height="18" fill="#161b22"/>
+  <circle cx="28" cy="29" r="7" fill="#ff5f56"/>
+  <circle cx="52" cy="29" r="7" fill="#ffbd2e"/>
+  <circle cx="76" cy="29" r="7" fill="#27c93f"/>
+  <text x="640" y="35" text-anchor="middle" class="chrome">news-gatherer.jar --demo</text>
+  <style>text{font:17px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.chrome{fill:#8b949e;font-size:15px}.prompt{fill:#58a6ff;font-weight:600}.output{fill:#e6edf3}.summary{fill:#3fb950;font-weight:700}</style>
+  <text x="42" y="112" class="prompt">News Gatherer • deterministic offline demo</text>
+  <text x="42" y="137" class="prompt">No network requests or database writes are performed.</text>
+  <text x="42" y="162" class="output"></text>
+  <text x="42" y="187" class="output">[001] 2026-07-17 09:15 • kamu.example</text>
+  <text x="42" y="212" class="output">      İstanbul açık veri kataloğunu güncelledi</text>
+  <text x="42" y="237" class="output">      https://kamu.example/haber/acik-veri</text>
+  <text x="42" y="262" class="output"></text>
+  <text x="42" y="287" class="output">[002] 2026-07-17 08:42 • arsiv.example</text>
+  <text x="42" y="312" class="output">      Türkçe arşivler araştırmacılara açıldı</text>
+  <text x="42" y="337" class="output">      https://arsiv.example/kultur/arastirma</text>
+  <text x="42" y="362" class="output"></text>
+  <text x="42" y="387" class="output">[003] 2026-07-17 07:30 • lab.example</text>
+  <text x="42" y="412" class="output">      Bağımsız ekip erişilebilirlik raporunu yayımladı</text>
+  <text x="42" y="437" class="output">      https://lab.example/teknoloji/erisilebilirlik</text>
+  <text x="42" y="462" class="output"></text>
+  <text x="42" y="487" class="summary">=== SUMMARY ===</text>
+  <text x="42" y="512" class="output">Fetched:      5</text>
+  <text x="42" y="537" class="output">New articles: 3</text>
+  <text x="42" y="562" class="output">Duplicates:   2</text>
+</svg>

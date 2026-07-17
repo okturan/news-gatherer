@@ -53,7 +53,9 @@ public class GdeltNewsGatherer {
         CliOptions options = CliOptions.parse(args);
         try {
             GdeltNewsGatherer gatherer = new GdeltNewsGatherer();
-            if (options.lookback().isPresent()) {
+            if (options.demo()) {
+                gatherer.runDemo(options);
+            } else if (options.lookback().isPresent()) {
                 gatherer.runBackfill(options);
             } else {
                 gatherer.run(options);
@@ -98,6 +100,40 @@ public class GdeltNewsGatherer {
             System.out.println("Stored " + newArticles.size() + " new articles in " + Config.DATABASE_FILE);
             writeJsonIfRequested(newArticles, options.jsonOutput());
         }
+    }
+
+    /**
+     * Renders a deterministic, network-free product proof using synthetic articles.
+     * No database is opened and no publisher content is fetched.
+     */
+    public void runDemo(CliOptions options) {
+        List<Article> articles = List.of(
+            demoArticle(
+                "https://kamu.example/haber/acik-veri",
+                "İstanbul açık veri kataloğunu güncelledi",
+                "kamu.example",
+                ZonedDateTime.of(2026, 7, 17, 9, 15, 0, 0, ZoneOffset.UTC)
+            ),
+            demoArticle(
+                "https://arsiv.example/kultur/arastirma",
+                "Türkçe arşivler araştırmacılara açıldı",
+                "arsiv.example",
+                ZonedDateTime.of(2026, 7, 17, 8, 42, 0, 0, ZoneOffset.UTC)
+            ),
+            demoArticle(
+                "https://lab.example/teknoloji/erisilebilirlik",
+                "Bağımsız ekip erişilebilirlik raporunu yayımladı",
+                "lab.example",
+                ZonedDateTime.of(2026, 7, 17, 7, 30, 0, 0, ZoneOffset.UTC)
+            )
+        );
+        articlePrinter.printDemoHeader();
+        articlePrinter.printArticles(articles, 5, 2);
+        writeJsonIfRequested(articles, options.jsonOutput());
+    }
+
+    private Article demoArticle(String url, String title, String domain, ZonedDateTime publishedDate) {
+        return new Article(url, title, domain, "Turkish", "Turkey", null, publishedDate, url);
     }
 
     public void runBackfill(CliOptions options) throws Exception {
