@@ -15,7 +15,8 @@ public record CliOptions(
     String timespan,
     Optional<Duration> lookback,
     Duration window,
-    Optional<Path> jsonOutput
+    Optional<Path> jsonOutput,
+    boolean demo
 ) {
 
     private static final Pattern DURATION_PATTERN = Pattern.compile("(?i)^(\\d+)([smhd])$");
@@ -27,6 +28,7 @@ public record CliOptions(
         Duration lookback = null;
         Duration window = DEFAULT_WINDOW;
         Path jsonOutput = null;
+        boolean demo = false;
 
         if (args != null) {
             for (String arg : args) {
@@ -36,6 +38,8 @@ public record CliOptions(
                 if ("--help".equals(arg) || "-h".equals(arg)) {
                     printUsage();
                     System.exit(0);
+                } else if ("--demo".equals(arg)) {
+                    demo = true;
                 } else if (arg.startsWith("--query=")) {
                     query = arg.substring("--query=".length());
                 } else if (arg.startsWith("--timespan=")) {
@@ -52,7 +56,14 @@ public record CliOptions(
             }
         }
 
-        return new CliOptions(query, timespan, Optional.ofNullable(lookback), window, Optional.ofNullable(jsonOutput));
+        return new CliOptions(
+            query,
+            timespan,
+            Optional.ofNullable(lookback),
+            window,
+            Optional.ofNullable(jsonOutput),
+            demo
+        );
     }
 
     private static Path parsePath(String token) {
@@ -93,6 +104,7 @@ public record CliOptions(
               --lookback=...    Enable backfill mode covering the past duration (e.g. 7d)
               --window=...      Window size used to chunk the lookback range (default 1h)
               --json-output=... Write newline-delimited JSON of new articles to the given path
+              --demo            Render deterministic offline proof without network or database access
               --help            Show this message
             """);
     }

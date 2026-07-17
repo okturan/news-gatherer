@@ -2,11 +2,21 @@
 
 A lean Java 25 CLI that pulls Turkish articles from the GDELT DOC 2.0 API, deduplicates them by canonical URL, and stores every fresh story in a local SQLite database for later analysis.
 
+![Deterministic offline output from the packaged News Gatherer CLI](./docs/news-gatherer-terminal.svg)
+
+The proof above is generated from `java -jar target/news-gatherer.jar --demo`. CI rebuilds the packaged JAR and refuses the change if its real renderer drifts from the committed asset.
+
 ## Quick Start
 
 ```bash
 mvn clean package
-java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar
+java -jar target/news-gatherer.jar
+```
+
+For a network-free product walkthrough that does not create a database:
+
+```bash
+java -jar target/news-gatherer.jar --demo
 ```
 
 ### Backfill Entire Weeks
@@ -15,7 +25,7 @@ Use the CLI flags to cover a long lookback by recursively splitting windows that
 
 ```bash
 mvn clean package
-java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar --lookback=7d --window=1h
+java -jar target/news-gatherer.jar --lookback=7d --window=1h
 ```
 
 Other useful flags:
@@ -24,6 +34,7 @@ Other useful flags:
 - `--timespan=...` – single-run timespan (e.g., `30m`, `2h`) when not using backfill mode
 - `--window=...` – chunk size for the backfill loop (supports `m`, `h`, `d` suffixes)
 - `--json-output=...` – write newline-delimited JSON of new articles (from the latest run) to the given path
+- `--demo` – render deterministic synthetic output without network or database access
 
 Backfill stops splitting at 30-minute windows. If one of those smallest windows still fills the 200-record request, the CLI warns that some results may be truncated; it does not claim exhaustive capture for an unusually dense interval.
 
@@ -141,5 +152,6 @@ You can customize deployment settings without editing the source by exporting th
 - `sqlite3 output/news-gatherer.db` is the fastest way to explore historical runs. Keep ad‑hoc queries in `data/` if they become reusable.
 - When adding new metadata columns, update the `articles` table DDL and the insert statement; SQLite will retain existing rows (new columns default to `NULL`).
 - Run `mvn clean verify` before sharing changes—Checkstyle is wired into the build and enforces basic hygiene.
+- CI retains the runnable shaded JAR for seven days and verifies the README proof from that exact artifact. A durable GitHub Release remains intentionally gated on an explicit licensing decision.
 
 Happy collecting!

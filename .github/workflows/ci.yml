@@ -35,6 +35,17 @@ jobs:
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress clean verify
 
+      - name: Verify packaged offline demo and README proof
+        run: python3 scripts/render_terminal_proof.py --jar target/news-gatherer.jar --check docs/news-gatherer-terminal.svg
+
+      - name: Retain runnable CLI artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: news-gatherer-java-25
+          path: target/news-gatherer.jar
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Check patch hygiene
         run: |
           git diff --check

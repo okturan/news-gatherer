@@ -44,6 +44,14 @@ public final class ArticlePrinter {
     }
 
     /**
+     * Labels the deterministic offline proof before article rendering.
+     */
+    public void printDemoHeader() {
+        output.println("News Gatherer • deterministic offline demo");
+        output.println("No network requests or database writes are performed.\n");
+    }
+
+    /**
      * Prints articles newest-first without mutating the supplied list.
      *
      * @param articles newly gathered articles
