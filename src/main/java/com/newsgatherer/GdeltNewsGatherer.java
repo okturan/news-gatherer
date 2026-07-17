@@ -3,6 +3,7 @@ package com.newsgatherer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.newsgatherer.client.GdeltApiClient;
+import com.newsgatherer.client.GdeltApiClient.FetchResult;
 import com.newsgatherer.config.CliOptions;
 import com.newsgatherer.config.Config;
 import com.newsgatherer.domain.Article;
@@ -147,11 +148,12 @@ public class GdeltNewsGatherer {
                               ArticleRepository repository,
                               Map<String, Long> seenUrls,
                               BackfillStats stats) throws Exception {
-        List<Article> articles = fetchWindowArticles(query, start, end);
+        FetchResult result = fetchWindowArticles(query, start, end);
+        List<Article> articles = result.articles();
         Duration span = Duration.between(start, end);
 
-        if (shouldSplitWindow(articles, span)) {
-            splitWindow(query, start, end, repository, seenUrls, stats, articles.size());
+        if (shouldSplitWindow(result, span)) {
+            splitWindow(query, start, end, repository, seenUrls, stats, result.responseCount());
             return;
         }
 
@@ -161,18 +163,18 @@ public class GdeltNewsGatherer {
         }
 
         stats.addFetched(articles.size());
-        persistNewArticles(articles, start, end, repository, seenUrls, stats);
+        persistNewArticles(articles, result.responseCount(), start, end, repository, seenUrls, stats);
     }
 
-    private List<Article> fetchWindowArticles(String query,
-                                              ZonedDateTime start,
-                                              ZonedDateTime end) throws Exception {
+    private FetchResult fetchWindowArticles(String query,
+                                            ZonedDateTime start,
+                                            ZonedDateTime end) throws Exception {
         System.out.printf("Window %s → %s UTC%n", formatTimestamp(start), formatTimestamp(end));
-        return apiClient.fetchArticles(query, start, end, Config.MAX_ARTICLES);
+        return apiClient.fetchArticlesWithMetadata(query, start, end, Config.MAX_ARTICLES);
     }
 
-    private boolean shouldSplitWindow(List<Article> articles, Duration span) {
-        if (articles.size() < Config.MAX_ARTICLES) {
+    static boolean shouldSplitWindow(FetchResult result, Duration span) {
+        if (!result.reachedLimit(Config.MAX_ARTICLES)) {
             return false;
         }
         return span.compareTo(MIN_SPLIT_WINDOW) > 0;
@@ -196,14 +198,15 @@ public class GdeltNewsGatherer {
     }
 
     private void persistNewArticles(List<Article> articles,
+                                    int responseCount,
                                     ZonedDateTime start,
                                     ZonedDateTime end,
                                     ArticleRepository repository,
                                     Map<String, Long> seenUrls,
                                     BackfillStats stats) throws Exception {
         Duration span = Duration.between(start, end);
-        if (articles.size() >= Config.MAX_ARTICLES && span.compareTo(MIN_SPLIT_WINDOW) <= 0) {
-            System.out.println("  → Warning: window hit the API cap and cannot be split below "
+        if (responseCount >= Config.MAX_ARTICLES && span.compareTo(MIN_SPLIT_WINDOW) <= 0) {
+            System.out.println("  → Warning: window hit the request limit and cannot be split below "
                 + MIN_SPLIT_WINDOW.toMinutes() + " minutes. Some results may be truncated.");
         }
 

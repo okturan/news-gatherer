@@ -14,8 +14,7 @@ public class Config {
     public static final Duration HTTP_TIMEOUT = Duration.ofSeconds(30);
 
     // GDELT API Limits (DOC 2.0 API constraints)
-    public static final int SAFE_MAX_RECORDS = 240;   // Safety margin to avoid saturation
-    public static final int MAX_ARTICLES = 200;       // Default fetch size
+    public static final int MAX_ARTICLES = 200;       // Default fetch size and saturation threshold
 
     // Rate Limiting (to avoid throttling)
     public static final Duration MIN_REQUEST_INTERVAL = Env.durationFromMillis(

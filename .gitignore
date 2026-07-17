@@ -2,8 +2,8 @@
 target/
 dependency-reduced-pom.xml
 
-# Output files
-output/
+# Runtime output files
+/output/
 
 # IDE
 .vscode/
