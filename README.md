@@ -11,7 +11,7 @@ java -jar target/news-gatherer-2.0.0-SNAPSHOT.jar
 
 ### Backfill Entire Weeks
 
-Use the new CLI flags to chunk the lookback window so you can safely ingest every Turkish article without blowing past the 250-row cap. Example: fetch the last 7 days using 1‑hour slices (the default window) while respecting the built-in rate limit:
+Use the CLI flags to cover a long lookback by recursively splitting windows that fill the 200-record request limit. Example: fetch the last 7 days using 1‑hour slices (the default window) while respecting the built-in rate limit:
 
 ```bash
 mvn clean package
@@ -25,13 +25,16 @@ Other useful flags:
 - `--window=...` – chunk size for the backfill loop (supports `m`, `h`, `d` suffixes)
 - `--json-output=...` – write newline-delimited JSON of new articles (from the latest run) to the given path
 
+Backfill stops splitting at 30-minute windows. If one of those smallest windows still fills the 200-record request, the CLI warns that some results may be truncated; it does not claim exhaustive capture for an unusually dense interval.
+
 ### Hand Off to News Extractor
 
-After each run, the SQLite backlog can be inspected with the Python extractor (see the root `../README.md` for the full workflow):
+After each run, the SQLite backlog can be inspected with the companion [News Extractor](https://github.com/okturan/news-extractor) project, whose README documents the downstream workflow:
 
 ```bash
 cd ../news-extractor
-poetry run python examples/scrape_news_gatherer_backlog.py \
+python -m pip install --no-deps --editable .
+python examples/scrape_news_gatherer_backlog.py \
   --db ../news-gatherer/output/news-gatherer.db \
   --limit 50 --format json > backlog.jsonl
 ```
@@ -40,7 +43,7 @@ Then use `examples/view_jsonl.py` or `examples/backlog_viewer.html` to review ex
 
 ## What It Does
 
-1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable) and warns when the response hits the 250‑row cap.
+1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable), and warns whenever a response fills that request limit.
 2. **Canonicalizes** URLs by trimming tracking parameters (`utm_*`, `fbclid`, etc.) and trailing slashes so different share links collapse to the same key.
 3. **Deduplicates** incrementally via SQLite (`output/news-gatherer.db`). Once a canonical URL is seen, it will be skipped for the next 7 days (retention window).
 4. **Persists** new articles (URL, title, domain, language, timestamps) and prints them in recency order with fetched/new/duplicate counts.
@@ -114,7 +117,7 @@ You can customize deployment settings without editing the source by exporting th
 
 ## GDELT Constraints & Tips
 
-- The DOC API caps responses at 250 rows. If you regularly see the “near limit” warning, rerun with a shorter `TIMESPAN` (e.g., `1h` or `30m`) or build a time-splitting loop.
+- The DOC API permits up to 250 rows, while this client deliberately requests 200. A full 200-record response may be truncated: shorten a single-run `--timespan`, or use backfill mode so saturated windows split recursively down to 30 minutes.
 - GDELT does not expose article bodies or summaries—only metadata. For Ground-News‑style comparisons you’d need to fetch each URL yourself.
 - Rate limiting is mandatory: sustained >0.5 QPS can get throttled. The CLI enforces a 2‑second gap between requests.
 
@@ -122,15 +125,15 @@ You can customize deployment settings without editing the source by exporting th
 
 1. **HTTP** – `GdeltApiClient` builds the query string (`mode=artlist`, `timespan`, `maxrecords`) and uses Java’s `HttpClient` with HTTP/2 and a built-in rate limiter.
 2. **Parsing** – `ArticleParser` reads the JSON, handles both `articles` and `artlist` payloads, and maps each node to an `Article` record.
-3. **Canonicalization** – Domains fall back to the URL host, tracking params are stripped, and everything is lowercased via `Locale.ROOT` for stability.
+3. **Canonicalization** – Domains fall back to the URL host and are lowercased via `Locale.ROOT`; tracking params and URL fragments are stripped without changing path or query-value case.
 4. **Deduplication** – `seen_urls` is loaded at startup, pruned (entries older than 7 days deleted), and updated with `INSERT OR IGNORE` for each new canonical URL.
 5. **Persistence** – `ArticleRepository` batches fresh stories into the `articles` table with ISO-8601 timestamps and the run’s `stored_at` epoch so downstream tooling can group by ingest.
 6. **Display** – `ArticlePrinter` shows new items in reverse chronological order along with run-level metrics so you can spot anomalies quickly.
 
-## Java 25 Features in Play
+## Modern Java Features in Play
 
 - **Records** for `Article` (immutable, concise data carrier)
-- **Stream::toList** for tidy collection materialization without collectors
+- **`Stream.toList()`** for tidy collection materialization without collectors
 - **Text blocks** for multi-line SQL DDL/insert statements
 
 ## Development Notes
