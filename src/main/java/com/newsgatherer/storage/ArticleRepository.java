@@ -71,38 +71,47 @@ public class ArticleRepository implements AutoCloseable {
         return seen;
     }
 
-    public List<Article> filterNewArticles(List<Article> articles,
-                                           Map<String, Long> seenUrls) throws SQLException {
+    public List<Article> saveNewArticles(List<Article> articles,
+                                         Map<String, Long> seenUrls) throws SQLException {
         long now = System.currentTimeMillis();
         List<Article> newArticles = new ArrayList<>();
+        Map<String, Long> newlySeen = new HashMap<>();
+        boolean previousAutoCommit = connection.getAutoCommit();
 
         String insertSql = "INSERT OR IGNORE INTO seen_urls(canonical_url, first_seen) VALUES (?, ?)";
+        connection.setAutoCommit(false);
         try (PreparedStatement insertSeen = connection.prepareStatement(insertSql)) {
             for (Article article : articles) {
                 String canonical = article.canonicalUrl();
-                if (!seenUrls.containsKey(canonical)) {
-                    newArticles.add(article);
-                    seenUrls.put(canonical, now);
+                if (!seenUrls.containsKey(canonical) && !newlySeen.containsKey(canonical)) {
                     insertSeen.setString(1, canonical);
                     insertSeen.setLong(2, now);
-                    insertSeen.executeUpdate();
+                    if (insertSeen.executeUpdate() == 0) {
+                        continue;
+                    }
+                    newArticles.add(article);
+                    newlySeen.put(canonical, now);
                 }
             }
+
+            insertArticles(newArticles);
+            connection.commit();
+            seenUrls.putAll(newlySeen);
+        } catch (SQLException | RuntimeException exception) {
+            connection.rollback();
+            throw exception;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
         }
 
         if (articles.size() != newArticles.size()) {
             System.out.println("  → Filtered " + (articles.size() - newArticles.size())
                 + " previously seen articles");
         }
-
         return newArticles;
     }
 
-    public void saveArticles(List<Article> articles) throws SQLException {
-        if (articles.isEmpty()) {
-            return;
-        }
-
+    private void insertArticles(List<Article> articles) throws SQLException {
         String sql = """
             INSERT INTO articles (
                 url, title, domain, language, source_country,

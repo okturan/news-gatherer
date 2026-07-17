@@ -85,7 +85,7 @@ public class GdeltNewsGatherer {
 
             System.out.println("Fetched " + allArticles.size() + " articles.");
 
-            List<Article> newArticles = repository.filterNewArticles(allArticles, seenUrls);
+            List<Article> newArticles = repository.saveNewArticles(allArticles, seenUrls);
             int filteredCount = allArticles.size() - newArticles.size();
 
             if (newArticles.isEmpty()) {
@@ -94,7 +94,6 @@ public class GdeltNewsGatherer {
                 return;
             }
 
-            repository.saveArticles(newArticles);
             articlePrinter.printArticles(newArticles, allArticles.size(), filteredCount);
 
             System.out.println("Stored " + newArticles.size() + " new articles in " + Config.DATABASE_FILE);
@@ -246,12 +245,11 @@ public class GdeltNewsGatherer {
                 + MIN_SPLIT_WINDOW.toMinutes() + " minutes. Some results may be truncated.");
         }
 
-        List<Article> newArticles = repository.filterNewArticles(articles, seenUrls);
+        List<Article> newArticles = repository.saveNewArticles(articles, seenUrls);
         if (newArticles.isEmpty()) {
             return;
         }
 
-        repository.saveArticles(newArticles);
         stats.addNewArticles(newArticles);
     }
 
