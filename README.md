@@ -57,7 +57,8 @@ Then use `examples/view_jsonl.py` or `examples/backlog_viewer.html` to review ex
 1. **Fetches** up to 200 Turkish articles from GDELT’s `/doc` API over the last 2 hours (configurable), and warns whenever a response fills that request limit.
 2. **Canonicalizes** URLs by trimming tracking parameters (`utm_*`, `fbclid`, etc.) and trailing slashes so different share links collapse to the same key.
 3. **Deduplicates** incrementally via SQLite (`output/news-gatherer.db`). Once a canonical URL is seen, it will be skipped for the next 7 days (retention window).
-4. **Persists** new articles (URL, title, domain, language, timestamps) and prints them in recency order with fetched/new/duplicate counts.
+4. **Persists atomically**: new seen-URL keys and their article rows commit in one transaction, so a failed article write cannot silently suppress the story on a later run.
+5. **Reports** new articles in recency order with fetched/new/duplicate counts.
 
 ### Storage Layout
 
@@ -138,7 +139,7 @@ You can customize deployment settings without editing the source by exporting th
 2. **Parsing** – `ArticleParser` reads the JSON, handles both `articles` and `artlist` payloads, and maps each node to an `Article` record.
 3. **Canonicalization** – Domains fall back to the URL host and are lowercased via `Locale.ROOT`; tracking params and URL fragments are stripped without changing path or query-value case.
 4. **Deduplication** – `seen_urls` is loaded at startup, pruned (entries older than 7 days deleted), and updated with `INSERT OR IGNORE` for each new canonical URL.
-5. **Persistence** – `ArticleRepository` batches fresh stories into the `articles` table with ISO-8601 timestamps and the run’s `stored_at` epoch so downstream tooling can group by ingest.
+5. **Persistence** – `ArticleRepository` commits fresh seen keys and article rows in one SQLite transaction, with ISO-8601 timestamps and the run’s `stored_at` epoch so downstream tooling can group by ingest. A failed article insert rolls the seen key back for a safe retry.
 6. **Display** – `ArticlePrinter` shows new items in reverse chronological order along with run-level metrics so you can spot anomalies quickly.
 
 ## Modern Java Features in Play
