@@ -31,6 +31,14 @@ import java.util.Optional;
  */
 public class GdeltNewsGatherer {
 
+    /** Success, including a valid answer with zero articles. */
+    static final int EXIT_OK = 0;
+    /** GDELT answered 200 with an empty body or {}: invalid query or throttling. */
+    static final int EXIT_EMPTY_RESPONSE = 3;
+
+    static final String EMPTY_RESPONSE_WARNING =
+        "Warning: GDELT returned nothing: the query may be invalid or throttled";
+
     private static final Duration MIN_SPLIT_WINDOW = Duration.ofMinutes(30);
     private static final DateTimeFormatter WINDOW_FORMAT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneOffset.UTC);
@@ -38,12 +46,21 @@ public class GdeltNewsGatherer {
     private final GdeltApiClient apiClient;
     private final ArticlePrinter articlePrinter;
     private final ObjectMapper objectMapper;
+    private final String databaseFile;
 
     public GdeltNewsGatherer() {
         this(new GdeltApiClient(), new ArticlePrinter(), new ObjectMapper().registerModule(new JavaTimeModule()));
     }
 
     public GdeltNewsGatherer(GdeltApiClient apiClient, ArticlePrinter articlePrinter, ObjectMapper objectMapper) {
+        this(apiClient, articlePrinter, objectMapper, Config.DATABASE_FILE);
+    }
+
+    public GdeltNewsGatherer(GdeltApiClient apiClient,
+                              ArticlePrinter articlePrinter,
+                              ObjectMapper objectMapper,
+                              String databaseFile) {
+        this.databaseFile = databaseFile;
         this.apiClient = apiClient;
         this.articlePrinter = articlePrinter;
         this.objectMapper = objectMapper;
@@ -53,37 +70,56 @@ public class GdeltNewsGatherer {
         CliOptions options = CliOptions.parse(args);
         try {
             GdeltNewsGatherer gatherer = new GdeltNewsGatherer();
+            int exitCode;
             if (options.demo()) {
                 gatherer.runDemo(options);
+                exitCode = EXIT_OK;
             } else if (options.lookback().isPresent()) {
-                gatherer.runBackfill(options);
+                exitCode = gatherer.runBackfill(options);
             } else {
-                gatherer.run(options);
+                exitCode = gatherer.run(options);
             }
+            if (exitCode != EXIT_OK) {
+                System.exit(exitCode);
+            }
+        } catch (GdeltApiClient.GdeltApiException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
             throw new IllegalStateException("News Gatherer failed to run", e);
         }
     }
 
-    public void run(CliOptions options) throws Exception {
+    public int run(CliOptions options) throws Exception {
         String query = options.query();
         String timespan = options.timespan();
-        try (ArticleRepository repository = new ArticleRepository(Config.DATABASE_FILE)) {
+        try (ArticleRepository repository = new ArticleRepository(databaseFile)) {
             System.out.println("Loading seen URLs...");
             Map<String, Long> seenUrls = repository.loadSeenUrls();
             System.out.println("  → Tracking " + seenUrls.size() + " previously seen URLs");
 
             System.out.println("Fetching articles from GDELT...");
-            List<Article> allArticles = apiClient.fetchArticles(query, timespan, Config.MAX_ARTICLES);
+            FetchResult fetched = apiClient.fetchArticlesWithMetadata(query, timespan, Config.MAX_ARTICLES);
+            List<Article> allArticles = fetched.articles();
 
+            if (fetched.emptyResponse()) {
+                writeJsonIfRequested(List.of(), options.jsonOutput());
+                System.out.println(EMPTY_RESPONSE_WARNING);
+                return EXIT_EMPTY_RESPONSE;
+            }
             if (allArticles.isEmpty()) {
                 writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No articles found.");
-                return;
+                return EXIT_OK;
             }
 
             System.out.println("Fetched " + allArticles.size() + " articles.");
+            if (fetched.reachedLimit(Config.MAX_ARTICLES)) {
+                System.out.println("Note: GDELT returned the " + Config.MAX_ARTICLES + "-record cap, so results for "
+                    + timespan + " are truncated. Use backfill for full coverage, e.g. --lookback="
+                    + timespan + " --window=1h.");
+            }
 
             List<Article> newArticles = repository.saveNewArticles(allArticles, seenUrls);
             int filteredCount = allArticles.size() - newArticles.size();
@@ -91,13 +127,14 @@ public class GdeltNewsGatherer {
             if (newArticles.isEmpty()) {
                 writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No new articles (all previously seen).");
-                return;
+                return EXIT_OK;
             }
 
             articlePrinter.printArticles(newArticles, allArticles.size(), filteredCount);
 
-            System.out.println("Stored " + newArticles.size() + " new articles in " + Config.DATABASE_FILE);
+            System.out.println("Stored " + newArticles.size() + " new articles in " + databaseFile);
             writeJsonIfRequested(newArticles, options.jsonOutput());
+            return EXIT_OK;
         }
     }
 
@@ -135,14 +172,14 @@ public class GdeltNewsGatherer {
         return new Article(url, title, domain, "Turkish", "Turkey", null, publishedDate, url);
     }
 
-    public void runBackfill(CliOptions options) throws Exception {
+    public int runBackfill(CliOptions options) throws Exception {
         Duration lookback = options.lookback().orElseThrow(() ->
             new IllegalArgumentException("lookback duration is required for backfill mode"));
         Duration window = options.window();
         validateDuration("lookback", lookback);
         validateDuration("window", window);
 
-        try (ArticleRepository repository = new ArticleRepository(Config.DATABASE_FILE)) {
+        try (ArticleRepository repository = new ArticleRepository(databaseFile)) {
             System.out.println("Loading seen URLs...");
             Map<String, Long> seenUrls = repository.loadSeenUrls();
             System.out.println("  → Tracking " + seenUrls.size() + " previously seen URLs");
@@ -165,15 +202,21 @@ public class GdeltNewsGatherer {
             }
 
             System.out.printf("Backfill complete. Processed %d windows.%n", stats.windowsProcessed());
+            int exitCode = stats.emptyResponses() > 0 ? EXIT_EMPTY_RESPONSE : EXIT_OK;
+            if (exitCode != EXIT_OK) {
+                System.out.printf("%s (%d window(s) came back empty).%n",
+                    EMPTY_RESPONSE_WARNING, stats.emptyResponses());
+            }
             if (stats.newArticles().isEmpty()) {
                 writeJsonIfRequested(List.of(), options.jsonOutput());
                 System.out.println("No new articles were discovered in the requested window.");
-                return;
+                return exitCode;
             }
             articlePrinter.printArticles(stats.newArticles(), stats.totalFetched(),
                 stats.totalFetched() - stats.totalNew());
-            System.out.println("Stored " + stats.totalNew() + " new articles in " + Config.DATABASE_FILE);
+            System.out.println("Stored " + stats.totalNew() + " new articles in " + databaseFile);
             writeJsonIfRequested(stats.newArticles(), options.jsonOutput());
+            return exitCode;
         }
     }
 
@@ -184,6 +227,12 @@ public class GdeltNewsGatherer {
                               Map<String, Long> seenUrls,
                               BackfillStats stats) throws Exception {
         FetchResult result = fetchWindowArticles(query, start, end);
+        if (result.emptyResponse()) {
+            System.out.println("  → " + EMPTY_RESPONSE_WARNING);
+            stats.incrementWindows();
+            stats.incrementEmptyResponses();
+            return;
+        }
         List<Article> articles = result.articles();
         Duration span = Duration.between(start, end);
 
@@ -307,6 +356,15 @@ public class GdeltNewsGatherer {
         private long totalFetched = 0;
         private long totalNew = 0;
         private int windowsProcessed = 0;
+        private int emptyResponses = 0;
+
+        void incrementEmptyResponses() {
+            emptyResponses++;
+        }
+
+        int emptyResponses() {
+            return emptyResponses;
+        }
 
         void incrementWindows() {
             windowsProcessed++;

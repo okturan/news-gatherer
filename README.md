@@ -21,7 +21,7 @@ java -jar target/news-gatherer.jar --demo
 
 ### Backfill Entire Weeks
 
-Use the CLI flags to cover a long lookback by recursively splitting windows that fill the 200-record request limit. Example: fetch the last 7 days using 1‑hour slices (the default window) while respecting the built-in rate limit:
+Use the CLI flags to cover a long lookback by recursively splitting windows that fill the 200-record request limit. Example: fetch the last 7 days using 1‑hour slices (the default window) while respecting the built-in 5 second request spacing (so a week of 1 hour windows takes a while):
 
 ```bash
 mvn clean package
@@ -40,7 +40,7 @@ Backfill stops splitting at 30-minute windows. If one of those smallest windows 
 
 ### Hand Off to News Extractor
 
-After each run, the SQLite backlog can be inspected with the companion [News Extractor](https://github.com/okturan/news-extractor) project, whose README documents the downstream workflow:
+After each run, the SQLite backlog can be inspected with the companion [News Extractor](https://github.com/okanerturan/news-extractor) project, whose README documents the downstream workflow:
 
 ```bash
 cd ../news-extractor
@@ -69,20 +69,22 @@ Then use `examples/view_jsonl.py` or `examples/backlog_viewer.html` to review ex
 
 ## Example Output
 
-```
-[001] 2025-11-09 03:45 • aa.com.tr
-      Cumhurbaşkanı Erdoğan yurda döndü
-      https://www.aa.com.tr/tr/politika/cumhurbaskani-erdogan-yurda-dondu/123456
+Captured from a real run on 2026-10-17 (`java -jar target/news-gatherer.jar --query=deprem --lookback=2h --window=1h`) while GDELT was throttling the author's IP. It shows the retry and empty-reply handling; the exit code was 3.
 
-[002] 2025-11-09 03:42 • hurriyet.com.tr
-      İstanbul'da kuvvetli fırtına uyarısı
-      https://www.hurriyet.com.tr/gundem/istanbulda-kuvvetli-firtina-uyarisi-123456
-
-=== SUMMARY ===
-Fetched:      153
-New articles: 42
-Duplicates:   111
 ```
+Loading seen URLs...
+  → Tracking 0 previously seen URLs
+Backfill range: 2026-10-17 01:41 → 2026-10-17 03:41 UTC (2h lookback, 1h windows)
+Window 2026-10-17 01:41 → 2026-10-17 02:41 UTC
+  → GDELT returned 429; waiting 5.0s before retry 1/3
+  → Warning: GDELT returned nothing: the query may be invalid or throttled
+Window 2026-10-17 02:41 → 2026-10-17 03:41 UTC
+  → GDELT returned 429; waiting 5.9s before retry 1/3
+  → Warning: GDELT returned nothing: the query may be invalid or throttled
+Backfill complete. Processed 2 windows.
+```
+
+A successful run prints each new article followed by a summary. The layout is shown in the offline demo image at the top; the numbers there are synthetic, not live data.
 
 ## Architecture
 
@@ -108,7 +110,8 @@ Key knobs in `config/Config.java`:
 public static final String GDELT_API_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc";
 public static final int MAX_ARTICLES = 200;         // request size (≤250)
 public static final String DEFAULT_TIMESPAN = "2h"; // window per run
-public static final Duration MIN_REQUEST_INTERVAL = Duration.ofMillis(2000); // 0.5 QPS
+public static final Duration MIN_REQUEST_INTERVAL = Duration.ofMillis(5000); // one request per 5 s
+public static final int MAX_ATTEMPTS = 4;           // 1 try + 3 retries on 429/5xx
 
 // Storage
 public static final String OUTPUT_DIR = "output";
@@ -125,13 +128,24 @@ You can customize deployment settings without editing the source by exporting th
 | `NEWS_GATHERER_OUTPUT_DIR` | `output` | Directory for generated artifacts. |
 | `NEWS_GATHERER_DATABASE_FILE` | `<OUTPUT_DIR>/news-gatherer.db` | Absolute/relative path to the SQLite database. |
 | `NEWS_GATHERER_SEEN_RETENTION_DAYS` | `7` | Number of days to keep URLs in the `seen_urls` cache. |
-| `NEWS_GATHERER_MIN_REQUEST_INTERVAL_MS` | `2000` | Minimum milliseconds between requests (rate limit). |
+| `NEWS_GATHERER_MIN_REQUEST_INTERVAL_MS` | `5000` | Minimum milliseconds between requests (rate limit). |
+| `NEWS_GATHERER_MAX_ATTEMPTS` | `4` | Total tries per request when GDELT answers 429 or 5xx. |
+| `NEWS_GATHERER_RETRY_BASE_DELAY_MS` | `5000` | First backoff delay; doubles per retry, plus up to 25% jitter, capped at 120 s. |
 
 ## GDELT Constraints & Tips
 
 - The DOC API permits up to 250 rows, while this client deliberately requests 200. A full 200-record response may be truncated: shorten a single-run `--timespan`, or use backfill mode so saturated windows split recursively down to 30 minutes.
 - GDELT does not expose article bodies or summaries—only metadata. For Ground-News‑style comparisons you’d need to fetch each URL yourself.
-- Rate limiting is mandatory: sustained >0.5 QPS can get throttled. The CLI enforces a 2‑second gap between requests.
+- Rate limiting is mandatory. GDELT answers 429 with "limit requests to one every 5 seconds", so the CLI waits 5 seconds between requests by default. On 429 or 5xx it retries with exponential backoff and jitter (honouring `Retry-After` if sent) and then fails with the status and total wait. The throttle can outlast a few retries if you have been polling recently; wait a few minutes and run again.
+- A 200 with an empty body or `{}` is not the same as "no articles". GDELT sends it for throttled or invalid queries, so the CLI prints "GDELT returned nothing: the query may be invalid or throttled" and exits with code 3. A genuine zero-result answer prints "No articles found." and exits 0.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Run finished (including a valid answer with zero articles). |
+| 1 | Failure, such as retries exhausted on 429/5xx or a non-JSON reply. |
+| 3 | GDELT returned nothing (empty body or `{}`); in backfill, at least one window did. |
 
 ## How It Works Internally
 

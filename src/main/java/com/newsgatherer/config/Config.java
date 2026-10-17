@@ -16,11 +16,19 @@ public class Config {
     // GDELT API Limits (DOC 2.0 API constraints)
     public static final int MAX_ARTICLES = 200;       // Default fetch size and saturation threshold
 
-    // Rate Limiting (to avoid throttling)
+    // Rate Limiting. GDELT answers 429 with "limit requests to one every 5 seconds".
     public static final Duration MIN_REQUEST_INTERVAL = Env.durationFromMillis(
         "NEWS_GATHERER_MIN_REQUEST_INTERVAL_MS",
-        Duration.ofMillis(2000)
-    );  // 0.5 QPS default
+        Duration.ofMillis(5000)
+    );  // 0.2 QPS default
+
+    // Retry policy for HTTP 429 and 5xx responses
+    public static final int MAX_ATTEMPTS = Env.intOrDefault("NEWS_GATHERER_MAX_ATTEMPTS", 4);
+    public static final Duration RETRY_BASE_DELAY = Env.durationFromMillis(
+        "NEWS_GATHERER_RETRY_BASE_DELAY_MS",
+        Duration.ofSeconds(5)
+    );
+    public static final Duration RETRY_MAX_DELAY = Duration.ofSeconds(120);
 
     public static final String DEFAULT_QUERY = "sourcecountry:turkey sourcelang:turkish";
     public static final String DEFAULT_TIMESPAN = "2h";

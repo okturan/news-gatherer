@@ -52,4 +52,22 @@ public final class Env {
             return fallback;
         }
     }
+
+    public static int intOrDefault(String key, int fallback) {
+        String value = System.getenv(key);
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            if (parsed <= 0) {
+                System.err.printf("[%s] must be positive; using default %d%n", key, fallback);
+                return fallback;
+            }
+            return parsed;
+        } catch (NumberFormatException ex) {
+            System.err.printf("Invalid %s value '%s'; using default %d%n", key, value, fallback);
+            return fallback;
+        }
+    }
 }
