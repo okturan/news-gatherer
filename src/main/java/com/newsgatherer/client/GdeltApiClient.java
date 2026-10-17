@@ -59,13 +59,13 @@ public class GdeltApiClient {
     }
 
     /** Fully injectable constructor; tests point it at a local server and a fake clock. */
-    GdeltApiClient(HttpClient httpClient,
-                   ObjectMapper objectMapper,
-                   ArticleParser articleParser,
-                   String endpoint,
-                   Duration minInterval,
-                   RetryPolicy retryPolicy,
-                   Sleeper sleeper) {
+    public GdeltApiClient(HttpClient httpClient,
+                          ObjectMapper objectMapper,
+                          ArticleParser articleParser,
+                          String endpoint,
+                          Duration minInterval,
+                          RetryPolicy retryPolicy,
+                          Sleeper sleeper) {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.articleParser = articleParser;
@@ -212,7 +212,7 @@ public class GdeltApiClient {
 
     /** Sleep seam so tests never wait in real time. */
     @FunctionalInterface
-    interface Sleeper {
+    public interface Sleeper {
         void sleep(long millis) throws InterruptedException;
     }
 
@@ -240,7 +240,7 @@ public class GdeltApiClient {
      * Retry settings: exponential backoff from {@code baseDelay} with up to 25% jitter,
      * capped at {@code maxDelay}. A server-sent Retry-After replaces the computed delay.
      */
-    record RetryPolicy(int maxAttempts, Duration baseDelay, Duration maxDelay, DoubleSupplier jitter) {
+    public record RetryPolicy(int maxAttempts, Duration baseDelay, Duration maxDelay, DoubleSupplier jitter) {
         static RetryPolicy fromConfig() {
             return new RetryPolicy(Config.MAX_ATTEMPTS, Config.RETRY_BASE_DELAY, Config.RETRY_MAX_DELAY,
                 () -> ThreadLocalRandom.current().nextDouble());

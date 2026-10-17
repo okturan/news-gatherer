@@ -46,12 +46,21 @@ public class GdeltNewsGatherer {
     private final GdeltApiClient apiClient;
     private final ArticlePrinter articlePrinter;
     private final ObjectMapper objectMapper;
+    private final String databaseFile;
 
     public GdeltNewsGatherer() {
         this(new GdeltApiClient(), new ArticlePrinter(), new ObjectMapper().registerModule(new JavaTimeModule()));
     }
 
     public GdeltNewsGatherer(GdeltApiClient apiClient, ArticlePrinter articlePrinter, ObjectMapper objectMapper) {
+        this(apiClient, articlePrinter, objectMapper, Config.DATABASE_FILE);
+    }
+
+    public GdeltNewsGatherer(GdeltApiClient apiClient,
+                              ArticlePrinter articlePrinter,
+                              ObjectMapper objectMapper,
+                              String databaseFile) {
+        this.databaseFile = databaseFile;
         this.apiClient = apiClient;
         this.articlePrinter = articlePrinter;
         this.objectMapper = objectMapper;
@@ -82,7 +91,7 @@ public class GdeltNewsGatherer {
     public int run(CliOptions options) throws Exception {
         String query = options.query();
         String timespan = options.timespan();
-        try (ArticleRepository repository = new ArticleRepository(Config.DATABASE_FILE)) {
+        try (ArticleRepository repository = new ArticleRepository(databaseFile)) {
             System.out.println("Loading seen URLs...");
             Map<String, Long> seenUrls = repository.loadSeenUrls();
             System.out.println("  → Tracking " + seenUrls.size() + " previously seen URLs");
@@ -120,7 +129,7 @@ public class GdeltNewsGatherer {
 
             articlePrinter.printArticles(newArticles, allArticles.size(), filteredCount);
 
-            System.out.println("Stored " + newArticles.size() + " new articles in " + Config.DATABASE_FILE);
+            System.out.println("Stored " + newArticles.size() + " new articles in " + databaseFile);
             writeJsonIfRequested(newArticles, options.jsonOutput());
             return EXIT_OK;
         }
@@ -167,7 +176,7 @@ public class GdeltNewsGatherer {
         validateDuration("lookback", lookback);
         validateDuration("window", window);
 
-        try (ArticleRepository repository = new ArticleRepository(Config.DATABASE_FILE)) {
+        try (ArticleRepository repository = new ArticleRepository(databaseFile)) {
             System.out.println("Loading seen URLs...");
             Map<String, Long> seenUrls = repository.loadSeenUrls();
             System.out.println("  → Tracking " + seenUrls.size() + " previously seen URLs");
@@ -202,7 +211,7 @@ public class GdeltNewsGatherer {
             }
             articlePrinter.printArticles(stats.newArticles(), stats.totalFetched(),
                 stats.totalFetched() - stats.totalNew());
-            System.out.println("Stored " + stats.totalNew() + " new articles in " + Config.DATABASE_FILE);
+            System.out.println("Stored " + stats.totalNew() + " new articles in " + databaseFile);
             writeJsonIfRequested(stats.newArticles(), options.jsonOutput());
             return exitCode;
         }
