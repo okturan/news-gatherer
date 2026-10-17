@@ -82,6 +82,9 @@ public class GdeltNewsGatherer {
             if (exitCode != EXIT_OK) {
                 System.exit(exitCode);
             }
+        } catch (GdeltApiClient.GdeltApiException e) {
+            System.err.println("Error: " + e.getMessage());
+            System.exit(1);
         } catch (Exception e) {
             System.err.println("Error: " + e.getMessage());
             throw new IllegalStateException("News Gatherer failed to run", e);
