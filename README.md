@@ -69,20 +69,22 @@ Then use `examples/view_jsonl.py` or `examples/backlog_viewer.html` to review ex
 
 ## Example Output
 
-```
-[001] 2025-11-09 03:45 • aa.com.tr
-      Cumhurbaşkanı Erdoğan yurda döndü
-      https://www.aa.com.tr/tr/politika/cumhurbaskani-erdogan-yurda-dondu/123456
+Captured from a real run on 2026-10-17 (`java -jar target/news-gatherer.jar --query=deprem --lookback=2h --window=1h`) while GDELT was throttling the author's IP. It shows the retry and empty-reply handling; the exit code was 3.
 
-[002] 2025-11-09 03:42 • hurriyet.com.tr
-      İstanbul'da kuvvetli fırtına uyarısı
-      https://www.hurriyet.com.tr/gundem/istanbulda-kuvvetli-firtina-uyarisi-123456
-
-=== SUMMARY ===
-Fetched:      153
-New articles: 42
-Duplicates:   111
 ```
+Loading seen URLs...
+  → Tracking 0 previously seen URLs
+Backfill range: 2026-10-17 01:41 → 2026-10-17 03:41 UTC (2h lookback, 1h windows)
+Window 2026-10-17 01:41 → 2026-10-17 02:41 UTC
+  → GDELT returned 429; waiting 5.0s before retry 1/3
+  → Warning: GDELT returned nothing: the query may be invalid or throttled
+Window 2026-10-17 02:41 → 2026-10-17 03:41 UTC
+  → GDELT returned 429; waiting 5.9s before retry 1/3
+  → Warning: GDELT returned nothing: the query may be invalid or throttled
+Backfill complete. Processed 2 windows.
+```
+
+A successful run prints each new article followed by a summary. The layout is shown in the offline demo image at the top; the numbers there are synthetic, not live data.
 
 ## Architecture
 
